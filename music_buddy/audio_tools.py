@@ -1,5 +1,3 @@
-# music_buddy/audio_tools.py
-
 import librosa
 import numpy as np
 import openai
@@ -43,7 +41,7 @@ def estimate_chord(chroma_vector):
     return best_chord
 
 # 🎼 Tách hợp âm từ đoạn
-def extract_chords_from_frames(y, sr, frame_duration=1.0):
+def extract_chords_from_frames(y, sr, frame_duration=0.5):
     frame_length = int(sr * frame_duration)
     total_frames = int(len(y) / frame_length)
     chords = []
@@ -53,8 +51,12 @@ def extract_chords_from_frames(y, sr, frame_duration=1.0):
         end = start + frame_length
         y_frame = y[start:end]
 
-        chroma = librosa.feature.chroma_cqt(y=y_frame, sr=sr)
-        avg_chroma = chroma.mean(axis=1)
+        if len(y_frame) < frame_length:
+            break  # Bỏ qua đoạn cuối nếu không đủ
+
+        # Dùng chroma_cens thay cho chroma_cqt
+        chroma = librosa.feature.chroma_cens(y=y_frame, sr=sr)
+        avg_chroma = np.median(chroma, axis=1)  # Dùng median thay vì mean
 
         chord_name = estimate_chord(avg_chroma)
         chords.append(chord_name)
@@ -94,7 +96,7 @@ def analyze_lyrics(lyrics):
     return response.choices[0].message.content.strip()
 
 # 📊 Vẽ biểu đồ hợp âm
-def plot_chord_progression(chords, frame_duration=1.0):
+def plot_chord_progression(chords, frame_duration=0.5):
     times = [i * frame_duration for i in range(len(chords))]
     fig, ax = plt.subplots(figsize=(12, 4))
     ax.bar(times, [1]*len(chords), width=frame_duration*0.8)

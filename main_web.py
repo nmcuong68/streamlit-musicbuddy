@@ -17,7 +17,7 @@ from music_buddy.audio_tools import (
 st.set_page_config(page_title="🎵 Music Buddy", layout="centered")
 st.title(":musical_note: Music Buddy - Phân tích hợp âm từ file âm thanh hoặc ghi âm trực tiếp")
 
-FRAME_DURATION = 1.0
+FRAME_DURATION = 0.5
 
 st.sidebar.header("🔢 Chọn cách nhập âm thanh")
 mode = st.sidebar.radio("Nguồn âm thanh", ["Upload file WAV", "Ghi âm trực tiếp"])
@@ -25,6 +25,7 @@ mode = st.sidebar.radio("Nguồn âm thanh", ["Upload file WAV", "Ghi âm trực
 audio_file = None
 y = None
 sr = None
+frames_buffer = []
 
 if mode == "Upload file WAV":
     uploaded_file = st.file_uploader("📂 Tải lên file .wav", type=["wav"])
@@ -47,24 +48,30 @@ elif mode == "Ghi âm trực tiếp":
         mode=WebRtcMode.SENDONLY,
         audio_receiver_size=1024,
         media_stream_constraints={"audio": True, "video": False},
+        rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
         audio_processor_factory=AudioProcessor,
     )
 
-    if ctx.audio_processor and not ctx.state.playing and ctx.audio_processor.frames:
-        audio_data = np.concatenate(ctx.audio_processor.frames).astype(np.int16)
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-            audio_file = f.name
-            with wave.open(f, 'wb') as wf:
-                wf.setnchannels(1)
-                wf.setsampwidth(2)
-                wf.setframerate(48000)
-                wf.writeframes(audio_data.tobytes())
-
-        y, sr = librosa.load(audio_file, sr=None)
+    if ctx.audio_processor and not ctx.state.playing:
+        frames = ctx.audio_processor.frames
+        if frames:
+            st.success(f"✅ Đã ghi âm xong ({len(frames)} khối dữ liệu). Bấm 'Phân tích' để tiếp tục.")
+            if st.button("📊 Phân tích âm thanh đã ghi"):
+                audio_data = np.concatenate(frames).astype(np.int16)
+                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+                    audio_file = f.name
+                    with wave.open(f, 'wb') as wf:
+                        wf.setnchannels(1)
+                        wf.setsampwidth(2)
+                        wf.setframerate(48000)
+                        wf.writeframes(audio_data.tobytes())
+                y, sr = librosa.load(audio_file, sr=None)
+        else:
+            st.warning("⚠️ Không có dữ liệu ghi âm. Hãy bấm Stop sau khi ghi.")
 
 # Phân tích hợp âm khi đã có file âm thanh
 if y is not None and sr is not None:
-    chords = extract_chords_from_frames(y, sr)
+    chords = extract_chords_from_frames(y, sr, frame_duration=FRAME_DURATION)
 
     st.subheader("🎶 Chuỗi hợp âm:")
     st.write(" → " + " - ".join(chords))
