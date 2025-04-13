@@ -26,6 +26,7 @@ audio_file = None
 y = None
 sr = None
 frames_buffer = []
+audio_levels = st.empty()
 
 if mode == "Upload file WAV":
     uploaded_file = st.file_uploader("📂 Tải lên file .wav", type=["wav"])
@@ -37,11 +38,15 @@ elif mode == "Ghi âm trực tiếp":
     class AudioProcessor(AudioProcessorBase):
         def __init__(self) -> None:
             self.frames = []
+            self.level = 0
 
-        def recv(self, frame: av.AudioFrame) -> av.AudioFrame:
-            pcm = frame.to_ndarray().flatten().astype(np.int16)
-            self.frames.append(pcm)
-            return frame
+        def recv_queued(self, frames):
+            for frame in frames:
+                pcm = frame.to_ndarray().flatten().astype(np.int16)
+                self.frames.append(pcm)
+                # Tính mức âm thanh RMS
+                self.level = int(np.sqrt(np.mean(pcm**2)) / 32768 * 100)
+            return frames[-1] if frames else None
 
     ctx = webrtc_streamer(
         key="audio",
@@ -51,6 +56,10 @@ elif mode == "Ghi âm trực tiếp":
         rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
         audio_processor_factory=AudioProcessor,
     )
+
+    if ctx.audio_processor and ctx.state.playing:
+        level = ctx.audio_processor.level
+        audio_levels.progress(level if level < 100 else 99, text=f"🔊 Mức âm thanh: {level}%")
 
     if ctx.audio_processor and not ctx.state.playing:
         frames = ctx.audio_processor.frames
